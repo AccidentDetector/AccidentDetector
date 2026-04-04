@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+python-multipart
+pydantic-settings
+python-json-logger
+slowapi

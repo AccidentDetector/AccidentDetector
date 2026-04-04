@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+ultralytics
+opencv-python-headless
+numpy
+pydantic-settings
+python-multipart
+python-json-logger
