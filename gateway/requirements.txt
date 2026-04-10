@@ -1,6 +1,8 @@
 fastapi
 uvicorn[standard]
 httpx
+opencv-python-headless
+numpy
 python-multipart
 pydantic-settings
 python-json-logger

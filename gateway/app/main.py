@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 
@@ -9,7 +10,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from .router import router
+from app.router import router
+from app.camera_manager import camera_refresh_loop
 
 handler = logging.StreamHandler()
 handler.setFormatter(jsonlogger.JsonFormatter(
@@ -19,13 +21,21 @@ logging.root.addHandler(handler)
 logging.root.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 limiter = Limiter(key_func=get_remote_address)
+
+
+async def lifespan(app: FastAPI):
+    logger.info('starting camera refresh loop')
+    asyncio.create_task(camera_refresh_loop())
+    yield
+    logger.info('shutting down')
+
 
 app = FastAPI(
     title='AccidentDetector API',
-    description='Multi-model incident detection for street cameras',
-    version='1.0',
+    description='Multi-model real-time incident detection for street and building cameras',
+    version='1.0.0',
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
