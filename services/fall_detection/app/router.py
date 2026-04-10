@@ -22,12 +22,12 @@ def decode_image(data: bytes) -> np.ndarray:
     return img
 
 
-@router.get('/health', response_model=HealthResponse, tags=['System'])
+@router.get('/health', response_model=HealthResponse)
 def health():
     return HealthResponse(status='ok', model_loaded=detector.loaded)
 
 
-@router.post('/predict', response_model=PredictResponse, tags=['Inference'])
+@router.post('/predict', response_model=PredictResponse)
 async def predict(file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=415, detail='file must be an image')
@@ -36,7 +36,7 @@ async def predict(file: UploadFile = File(...)):
         contents        = await file.read()
         img             = decode_image(contents)
         alert, dets, ms = detector.predict(img)
-        logger.info(f'predict alert={alert} detections={len(dets)} file={file.filename}')
+        logger.info(f'predict | alert={alert} detections={len(dets)} file={file.filename}')
         return PredictResponse(alert=alert, detections=dets, count=len(dets), inference_ms=ms)
     except HTTPException:
         raise
@@ -45,7 +45,7 @@ async def predict(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail='inference failed')
 
 
-@router.post('/predict/annotated', tags=['Inference'])
+@router.post('/predict/annotated')
 async def predict_annotated(file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=415, detail='file must be an image')
@@ -57,7 +57,7 @@ async def predict_annotated(file: UploadFile = File(...)):
         annotated = result.plot()
 
         alert = any(
-            settings.class_names[int(b.cls.item())] == 'Fall'
+            settings.class_names[int(b.cls.item())] == settings.alert_class
             and b.conf.item() >= settings.alert_threshold
             for b in (result.boxes or [])
         )

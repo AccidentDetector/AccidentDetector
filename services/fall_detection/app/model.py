@@ -19,7 +19,7 @@ class FallDetector:
         logger.info(f'loading model from {path}')
         self.model  = YOLO(str(path))
         self.loaded = True
-        logger.info('model loaded')
+        logger.info('model loaded successfully')
 
     def predict(self, image: np.ndarray) -> tuple[bool, list[Detection], float]:
         start  = time.time()
@@ -42,7 +42,7 @@ class FallDetector:
                 box        = BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2),
             ))
 
-            if cls_name == 'Fall' and conf >= settings.alert_threshold:
+            if cls_name == settings.alert_class and conf >= settings.alert_threshold:
                 alert = True
 
         return alert, detections, ms

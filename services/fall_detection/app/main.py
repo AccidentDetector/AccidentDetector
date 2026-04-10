@@ -1,12 +1,10 @@
 import logging
-
 from fastapi import FastAPI
-from pythonjsonlogger import json
-
+from pythonjsonlogger import jsonlogger
 from .router import router
 
 handler = logging.StreamHandler()
-handler.setFormatter(json.JsonFormatter(
+handler.setFormatter(jsonlogger.JsonFormatter(
     '%(asctime)s %(levelname)s %(name)s %(message)s'
 ))
 logging.root.addHandler(handler)
@@ -14,7 +12,7 @@ logging.root.setLevel(logging.INFO)
 
 app = FastAPI(
     title='Fall Detection Service',
-    version='1.0',
+    version='1.0.0',
     docs_url=None,
     redoc_url=None,
 )
