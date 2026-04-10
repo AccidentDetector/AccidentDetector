@@ -11,11 +11,16 @@ services:
       # - fire-detection
       # - violence-detection
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   fall-detection:
     build: ./services/fall_detection
     expose:
-      - "8001"                         # internal only — not exposed to host
+      - "8001"
     volumes:
       - ./services/fall_detection/weights:/app/weights
     env_file:
@@ -28,6 +33,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # fire-detection:
   #   build: ./services/fire_detection
@@ -45,4 +55,21 @@ services:
   #           - driver: nvidia
   #             count: 1
   #             capabilities: [gpu]
-  # AND SO ON...
+
+  # violence-detection:
+  #   build: ./services/violence_detection
+  #   expose:
+  #     - "8003"
+  #   volumes:
+  #     - ./services/violence_detection/weights:/app/weights
+  #   env_file:
+  #     - ./services/violence_detection/.env
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+#ANS SO ON...
