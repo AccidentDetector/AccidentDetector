@@ -1,0 +1,95 @@
+services:
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - fall-detection
+      # - fire-detection
+      # - violence-detection
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  fall-detection:
+    build: ./services/fall_detection
+    expose:
+      - "8001"
+    volumes:
+      - ./services/fall_detection/weights:/app/weights
+    env_file:
+      - ./services/fall_detection/.env
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
+  fire-detection:
+    build: ./services/fire_detection
+    expose:
+      - "8002"
+    volumes:
+      - ./services/fire_detection/weights:/app/weights
+    env_file:
+      - ./services/fire_detection/.env
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+
+
+  # fire-detection:
+  #   build: ./services/fire_detection
+  #   expose:
+  #     - "8002"
+  #   volumes:
+  #     - ./services/fire_detection/weights:/app/weights
+  #   env_file:
+  #     - ./services/fire_detection/.env
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+  # violence-detection:
+  #   build: ./services/violence_detection
+  #   expose:
+  #     - "8003"
+  #   volumes:
+  #     - ./services/violence_detection/weights:/app/weights
+  #   env_file:
+  #     - ./services/violence_detection/.env
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+#ANS SO ON...
