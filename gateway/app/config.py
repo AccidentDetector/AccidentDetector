@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # ML service URLs — add new models here
     fall_detection_url    : str = 'http://fall-detection:8001'
     fire_detection_url    : str = ''
-    violence_detection_url: str = ''
+    violence_detection_url: str = 'http://violence-detection:8003'
 
     # Go backend integration
     backend_url      : str = ''   # http://qamqor-vision-backend:8080
