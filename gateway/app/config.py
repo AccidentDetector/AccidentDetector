@@ -4,18 +4,16 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     api_key: str = 'changeme'
 
-    # ML service URLs — add new models here
-    fall_detection_url    : str = 'http://fall-detection:8001'
-    fire_detection_url    : str = ''
+    fall_detection_url: str = 'http://fall-detection:8001'
+    fire_detection_url: str = ''
     violence_detection_url: str = 'http://violence-detection:8003'
 
-    # Go backend integration
-    backend_url      : str = ''   # http://qamqor-vision-backend:8080
-    backend_api_key  : str = ''   # API key to call their backend
+    backend_url: str = ''
+    backend_api_key: str = ''
 
-    frame_interval_sec  : float = 1.0    # how often to sample frames per camera
-    alert_cooldown_sec  : int   = 30     # min seconds between alerts for same camera
-    camera_refresh_sec  : int   = 60     # how often to refresh camera list from backend
+    frame_interval_sec: float = 1.0
+    alert_cooldown_sec: int = 30
+    camera_refresh_sec: int = 60
 
     class Config:
         env_file = '.env'
@@ -23,10 +21,50 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+MODEL_REGISTRY: dict[str, dict] = {
+    'fall-detection': {
+        'url': settings.fall_detection_url,
+        'input_mode': 'image',
+        'filename': 'frame.jpg',
+        'content_type': 'image/jpeg',
+    },
+    'fire-detection': {
+        'url': settings.fire_detection_url,
+        'input_mode': 'image',
+        'filename': 'frame.jpg',
+        'content_type': 'image/jpeg',
+    },
+    'violence-detection': {
+        'url': settings.violence_detection_url,
+        'input_mode': 'video',
+        'filename': 'clip.avi',
+        'content_type': 'video/x-msvideo',
+        'clip_frames': 16,
+        'clip_duration_sec': 1.0,
+        'clip_fps': 16,
+    },
+}
+
+MODEL_REGISTRY = {
+    name: spec
+    for name, spec in MODEL_REGISTRY.items()
+    if spec.get('url')
+}
+
+IMAGE_MODELS = {
+    name: spec
+    for name, spec in MODEL_REGISTRY.items()
+    if spec.get('input_mode') == 'image'
+}
+
+VIDEO_MODELS = {
+    name: spec
+    for name, spec in MODEL_REGISTRY.items()
+    if spec.get('input_mode') == 'video'
+}
+
 SERVICE_REGISTRY: dict[str, str] = {
-    k: v for k, v in {
-        'fall-detection'     : settings.fall_detection_url,
-        'fire-detection'     : settings.fire_detection_url,
-        'violence-detection' : settings.violence_detection_url,
-    }.items() if v
+    name: spec['url']
+    for name, spec in MODEL_REGISTRY.items()
+    if spec.get('url')
 }
