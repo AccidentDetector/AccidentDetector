@@ -39,6 +39,26 @@ services:
       timeout: 10s
       retries: 3
 
+
+  fire-detection:
+    build: ./services/fire_detection
+    expose:
+      - "8002"
+    volumes:
+      - ./services/fire_detection/weights:/app/weights
+    env_file:
+      - ./services/fire_detection/.env
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+
+
   # fire-detection:
   #   build: ./services/fire_detection
   #   expose:
