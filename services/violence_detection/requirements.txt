@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+opencv-python-headless
+torch
+torchvision
+pydantic-settings
+python-json-logger
+numpy
