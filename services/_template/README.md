@@ -1,40 +1,151 @@
+````md
 # [Your Model Name] Detection Service
 
 ## How to use this template
 
-1. Copy this folder:
-   ```bash
-   cp -r services/_template services/your_model_name
-   ```
+Copy this folder:
 
-2. Pick a port number (8001 is fall, 8002 fire, 8003 violence etc.)
+```bash
+cp -r services/_template services/your_model_name
+````
 
-3. Update these files:
+Pick a free port number:
 
-   **`app/config.py`**
-   - Set `class_names` to your model's classes
-   - Set `alert_class` to the class name that should trigger `alert=true`
+* `8001` — fall
+* `8002` — fire
+* `8003` — violence
 
-   **`app/schemas.py`**
-   - Change `model = 'your-model'` to your model name
+## Update these files
 
-   **`app/model.py`**
-   - Rename `YourDetector` class to something meaningful
+### `app/config.py`
 
-   **`app/main.py`**
-   - Update the `title` string
+Set:
 
-   **`Dockerfile`**
-   - Change `EXPOSE 8001` to your port
+* `model_path`
+* `class_names`
+* `alert_class`
+* thresholds
 
-4. Place your `best.pt` in `weights/`
+For video models, also set clip-related parameters if needed:
 
-5. Add your service to root `docker-compose.yml` (copy the commented block)
+* `clip_num_frames`
+* `clip_duration_sec`
+* `image_size`
 
-6. Add your service URL to root `.env.example`
+### `app/schemas.py`
 
-7. Add your URL to `gateway/app/config.py` SERVICE_REGISTRY
+Change the model name from:
 
-8. Add your routes to `gateway/app/router.py` (copy the fall-detection block)
+```python
+model = 'your-model'
+```
 
-9. Update the README table in root `README.md`
+to your actual model name.
+
+Keep the standard response format:
+
+* `alert`
+* `detections`
+* `count`
+* `inference_ms`
+
+### `app/model.py`
+
+Rename `YourDetector` to something meaningful and implement the model loading/inference logic.
+
+Use the correct input type:
+
+* **image model** — one frame/image
+* **video model** — short clip
+
+### `app/router.py`
+
+Implement:
+
+* `GET /health`
+* `POST /predict`
+
+Use:
+
+* `image/*` validation for image models
+* `video/*` validation for video models
+
+`/predict/annotated` is optional.
+For video models, returning `501 Not Implemented` is acceptable at first.
+
+### `app/main.py`
+
+Update the FastAPI title string.
+
+### `Dockerfile`
+
+Update:
+
+* `EXPOSE` to your port
+* uvicorn `--port` to the same port
+
+### `weights/`
+
+Place your model weights in:
+
+```text
+weights/
+```
+
+Do not commit model weights.
+
+## Register the model in gateway
+
+### Add your service to root `docker-compose.yml`
+
+Copy an existing service block and update:
+
+* service name
+* build path
+* port
+* weights mount
+
+### Add your service URL to root `.env.example`
+
+### Add your model to `gateway/app/config.py`
+
+Register it in `MODEL_REGISTRY`.
+
+For an **image model**:
+
+```python
+'your-image-model': {
+    'url': settings.your_image_model_url,
+    'input_mode': 'image',
+    'filename': 'frame.jpg',
+    'content_type': 'image/jpeg',
+},
+```
+
+For a **video model**:
+
+```python
+'your-video-model': {
+    'url': settings.your_video_model_url,
+    'input_mode': 'video',
+    'filename': 'clip.avi',
+    'content_type': 'video/x-msvideo',
+    'clip_frames': 16,
+    'clip_duration_sec': 1.0,
+    'clip_fps': 16,
+},
+```
+
+Also add the corresponding URL field to `Settings`.
+
+### Add your routes to `gateway/app/router.py`
+
+Copy an existing route block such as `fall-detection` and adapt it.
+
+Use:
+
+* image upload validation for image models
+* video upload validation for video models
+
+```
+```
