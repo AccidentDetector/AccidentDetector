@@ -10,8 +10,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.router import router
-from app.camera_manager import camera_refresh_loop
+from .router import router
+from .camera_manager import camera_refresh_loop
 
 handler = logging.StreamHandler()
 handler.setFormatter(jsonlogger.JsonFormatter(

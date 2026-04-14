@@ -8,7 +8,7 @@ services:
       - .env
     depends_on:
       - fall-detection
-      # - fire-detection
+      - fire-detection
       # - violence-detection
     restart: unless-stopped
     healthcheck:
@@ -42,7 +42,7 @@ services:
 
   fire-detection:
     build: ./services/fire_detection
-    expose:
+   expose:
       - "8002"
     volumes:
       - ./services/fire_detection/weights:/app/weights
