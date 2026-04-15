@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     api_key: str = 'changeme'
 
     fall_detection_url: str = 'http://fall-detection:8001'
-    fire_detection_url: str = ''
+    fire_detection_url: str = 'http://fire-detection:8002'
     violence_detection_url: str = 'http://violence-detection:8003'
 
     backend_url: str = ''

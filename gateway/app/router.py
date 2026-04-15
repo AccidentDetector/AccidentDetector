@@ -177,6 +177,35 @@ async def fire_predict_annotated(
             logger.error(f'fire annotated error: {e}')
             raise HTTPException(status_code=502, detail='service unavailable')
 
+
+
+
+@router.get('/violence-detection/health', tags=['Violence Detection'])
+async def violence_health():
+    url = get_service_url('violence-detection')
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f'{url}/health')
+            return r.json()
+        except Exception:
+            raise HTTPException(status_code=502, detail='violence-detection service unreachable')
+
+
+@router.post('/violence-detection/predict', tags=['Violence Detection'])
+async def violence_predict(
+    file     : UploadFile = File(...),
+    x_api_key: str = Header(...),
+):
+    verify_api_key(x_api_key)
+
+    if not file.content_type or not file.content_type.startswith('video/'):
+        raise HTTPException(status_code=415, detail='file must be a video')
+
+    url      = get_service_url('violence-detection')
+    contents = await file.read()
+    r        = await forward_to_service(url, file, contents)
+    return JSONResponse(status_code=r.status_code, content=r.json())
+
 #Другие ML сервисы членов команды в том же паттерне
 
 # @router.get('/fire-detection/health', tags=['Fire Detection'])

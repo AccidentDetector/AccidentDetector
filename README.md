@@ -46,11 +46,11 @@ MediaMTX (RTSP camera streams)
 ## Services
 
 | Service | Port | Status |
-|---|---|---|
-| Gateway | 8000 | done |
-| Fall Detection | 8001 | done |
-| Fire Detection | 8002 | in progress |
-| Violence Detection | 8003 | in progress |
+|---|---|--------|
+| Gateway | 8000 | done   |
+| Fall Detection | 8001 | done   |
+| Fire Detection | 8002 | done   |
+| Violence Detection | 8003 | done   |
 
 ---
 
