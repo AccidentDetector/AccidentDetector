@@ -62,7 +62,7 @@ async def fetch_cameras_from_backend() -> list[Camera]:
             return []
 
 
-def get_manual_cameras() -> list[Camera]:
+#def get_manual_cameras() -> list[Camera]:
     """
     Fallback — hardcode cameras here for testing before
     the Go backend exposes the stream-config endpoint.
@@ -72,7 +72,7 @@ def get_manual_cameras() -> list[Camera]:
     return [
         Camera(
              id                     = 'test-camera-1',
-             rtsp_url               = 'rtsp://localhost:8554/test-camera',
+             rtsp_url               = 'rtsp://mediamtx:8554/test-camera',
              organization_id        = 'org-uuid',
              organization_branch_id = 'branch-uuid',
              incident_type_map      = {

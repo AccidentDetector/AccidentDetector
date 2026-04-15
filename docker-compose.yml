@@ -9,7 +9,7 @@ services:
     depends_on:
       - fall-detection
       - fire-detection
-      # - violence-detection
+      - violence-detection
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -42,7 +42,7 @@ services:
 
   fire-detection:
     build: ./services/fire_detection
-   expose:
+    expose:
       - "8002"
     volumes:
       - ./services/fire_detection/weights:/app/weights
@@ -56,6 +56,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [ gpu ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 
   violence-detection:
