@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -16,7 +18,7 @@ class Settings(BaseSettings):
     camera_refresh_sec: int = 60
 
     class Config:
-        env_file = '.env'
+        env_file = Path(__file__).parent.parent.parent / '.env'
 
 
 settings = Settings()
