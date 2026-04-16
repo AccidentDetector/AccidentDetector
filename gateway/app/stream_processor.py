@@ -13,6 +13,13 @@ import numpy as np
 from .config import settings, IMAGE_MODELS, VIDEO_MODELS
 from .reporter import reporter
 
+from collections import deque
+from .config import MODEL_FRAME_INTERVALS
+
+theft_frame_buffers = {}
+theft_buffer_lock = asyncio.Lock()
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,6 +67,57 @@ async def send_payload(
         except Exception as e:
             logger.error(f'inference error | model={model_name} error={e}')
             return None
+
+
+async def send_theft_batch(camera_id: str, frames: list[bytes]) -> Optional[dict]:
+    if not frames:
+        return None
+
+    files = []
+    for i, fb in enumerate(frames):
+        files.append(("files", (f"frame_{i}.jpg", fb, "image/jpeg")))
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            r = await client.post(
+                f"{settings.THEFT_DETECTION_URL}/predict/batch",
+                params={"camera_id": camera_id},
+                files=files,
+            )
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            logger.error(f'theft batch request failed | camera={camera_id} error={e}')
+            return None
+
+
+async def process_theft_frame(camera: Camera, frame_bytes: bytes):
+    async with theft_buffer_lock:
+        if camera.id not in theft_frame_buffers:
+            theft_frame_buffers[camera.id] = deque(maxlen=16)
+        buf = theft_frame_buffers[camera.id]
+        buf.append(frame_bytes)
+
+        if len(buf) == 16:
+            frames = list(buf)
+            buf.clear()
+            asyncio.create_task(handle_theft_batch(camera, frames))
+
+
+async def handle_theft_batch(camera: Camera, frames: list[bytes]):
+    result = await send_theft_batch(camera.id, frames)
+    if result:
+        adapted = {
+            "alert": result.get("alert", False),
+            "detections": [
+                {
+                    "class_name": result.get("class_name", "unknown"),
+                    "confidence": result.get("confidence", 0.0),
+                }
+            ],
+        }
+        await handle_result(camera, "theft-detection", adapted)
+
 
 
 async def handle_result(camera: Camera, model_name: str, result: dict):
@@ -120,6 +178,14 @@ def grab_latest_frame(cap: cv2.VideoCapture) -> tuple[bool, Optional[np.ndarray]
 
 
 async def process_image_frame(camera: Camera, frame_bytes: bytes):
+    if "theft-detection" in camera.incident_type_map:
+        await process_theft_frame(camera, frame_bytes)
+
+    other_models = {
+        name: spec for name, spec in IMAGE_MODELS.items()
+        if name != "theft-detection" and name in camera.incident_type_map
+    }
+
     tasks = {
         model_name: send_payload(
             model_name=model_name,
@@ -129,7 +195,7 @@ async def process_image_frame(camera: Camera, frame_bytes: bytes):
             content_type=spec['content_type'],
             timeout=5.0,
         )
-        for model_name, spec in IMAGE_MODELS.items()
+        for model_name, spec in other_models.items()
     }
 
     if not tasks:
@@ -245,13 +311,22 @@ async def process_camera_stream(camera: Camera):
                     await asyncio.sleep(0.1)
                     continue
 
-                if IMAGE_MODELS:
-                    ok, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                    if ok:
-                        frame_bytes = buffer.tobytes()
+                ok, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if ok:
+                    frame_bytes = buffer.tobytes()
+                    
+                    if "theft-detection" in camera.incident_type_map:
+                        await process_theft_frame(camera, frame_bytes)
+                    
+                    if IMAGE_MODELS:
                         asyncio.create_task(process_image_frame(camera, frame_bytes))
 
-                await asyncio.sleep(settings.frame_interval_sec)
+                custom_interval = settings.frame_interval_sec
+                for model in camera.incident_type_map.keys():
+                    if model in MODEL_FRAME_INTERVALS:
+                        custom_interval = min(custom_interval, MODEL_FRAME_INTERVALS[model])
+                
+                await asyncio.sleep(custom_interval)
 
         except Exception as e:
             logger.error(f'image stream error | camera={camera.id} error={e}')
