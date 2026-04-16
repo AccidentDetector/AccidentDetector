@@ -90,8 +90,8 @@ async def camera_refresh_loop():
     while True:
         cameras = await fetch_cameras_from_backend()
 
-        if not cameras:
-            cameras = get_manual_cameras()
+        #if not cameras:
+        #    cameras = get_manual_cameras()
 
         if cameras:
             stream_manager.update_cameras(cameras)
