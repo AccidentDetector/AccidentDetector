@@ -84,7 +84,17 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
+  
+  theft-detection:
+    build: ./services/theft_detection
+    container_name: theft-detection
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./services/theft_detection/weights:/app/weights:ro
+    env_file:
+      - ./services/theft_detection/.env
+    restart: unless-stopped
 
   # modelname-detection:
   #   build: ./services/modelname_detection
