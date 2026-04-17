@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     fall_detection_url: str = 'http://fall-detection:8001'
     fire_detection_url: str = 'http://fire-detection:8002'
     violence_detection_url: str = 'http://violence-detection:8003'
+    THEFT_DETECTION_URL: str = "http://theft-detection:8005"
 
     backend_url: str = ''
     backend_api_key: str = ''
@@ -20,6 +21,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+MODEL_FRAME_INTERVALS: dict[str, float] = {
+    "theft-detection": 0.33,
+}
 
 MODEL_REGISTRY: dict[str, dict] = {
     'fall-detection': {
