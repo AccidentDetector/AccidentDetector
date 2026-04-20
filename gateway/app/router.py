@@ -287,6 +287,64 @@ async def burglary_predict_batch(
             logger.error(f'burglary batch error: {e}')
             raise HTTPException(status_code=502, detail='service unavailable')
         
+
+# person model
+
+@router.get('/person_model/health', tags=['Person Model'])
+async def fall_health():
+    url = get_service_url('person_model')
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f'{url}/health')
+            return r.json()
+        except Exception:
+            raise HTTPException(status_code=502, detail='person_model service unreachable')
+
+
+@router.post('/person_model/predict', tags=['Person Model'])
+async def fall_predict(
+    file     : UploadFile = File(...),
+    x_api_key: str = Header(...),
+):
+    verify_api_key(x_api_key)
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=415, detail='file must be an image')
+
+    url      = get_service_url('person_model')
+    contents = await file.read()
+    r        = await forward_to_service(url, file, contents)
+    return JSONResponse(status_code=r.status_code, content=r.json())
+
+
+@router.post('/person_model/predict/annotated', tags=['Person Model'])
+async def fall_predict_annotated(
+    file     : UploadFile = File(...),
+    x_api_key: str = Header(...),
+):
+    verify_api_key(x_api_key)
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=415, detail='file must be an image')
+
+    url      = get_service_url('person_model')
+    contents = await file.read()
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        try:
+            r = await client.post(
+                f'{url}/predict/annotated',
+                files={'file': (file.filename, contents, file.content_type)},
+            )
+            return StreamingResponse(
+                content=r.aiter_bytes(),
+                media_type='image/jpeg',
+                headers={'X-Alert': r.headers.get('X-Alert', 'false')},
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail='service timed out')
+        except Exception as e:
+            logger.error(f'annotated error: {e}')
+            raise HTTPException(status_code=502, detail='service unavailable')
+        
 #Другие ML сервисы членов команды в том же паттерне
 
 # @router.get('/fire-detection/health', tags=['Fire Detection'])
