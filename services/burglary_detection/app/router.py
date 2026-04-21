@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 import cv2
 import numpy as np
@@ -17,19 +18,13 @@ def decode_image(data: bytes) -> np.ndarray:
 
 @router.get('/health', response_model=HealthResponse)
 def health():
-    return HealthResponse(
-        status='ok',
-        model_loaded=detector.loaded
-    )
+    return HealthResponse(status='ok', model_loaded=detector.loaded)
 
 @router.post('/predict/batch', response_model=PredictResponse)
 async def predict_batch(
     files: list[UploadFile] = File(...),
     camera_id: Optional[str] = Query('default')
 ):
-    """
-    Принимает ровно 16 кадров и возвращает один ответ.
-    """
     if len(files) != 16:
         raise HTTPException(status_code=400, detail=f'Exactly 16 frames required, got {len(files)}')
     

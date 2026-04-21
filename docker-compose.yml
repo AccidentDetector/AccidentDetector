@@ -10,6 +10,8 @@ services:
       - fall-detection
       - fire-detection
       - violence-detection
+      - burglary-detection
+      - theft-detection
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -84,6 +86,24 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  burglary-detection:
+    build: ./services/burglary_detection
+    container_name: burglary-detection
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./services/burglary_detection/weights:/app/weights:ro
+    env_file:
+      - ./services/burglary_detection/.env
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
   
   theft-detection:
     build: ./services/theft_detection
