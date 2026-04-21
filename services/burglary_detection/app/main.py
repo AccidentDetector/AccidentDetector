@@ -11,10 +11,9 @@ logging.root.addHandler(handler)
 logging.root.setLevel(logging.INFO)
 
 app = FastAPI(
-    title='Your Model Service',
+    title='Burglary Detection Service',
     version='1.0.0',
     docs_url='/docs',
-    redoc_url=None,
 )
 
 app.include_router(router)
