@@ -77,7 +77,8 @@ async def fetch_cameras_from_backend() -> list[Camera]:
              organization_branch_id = 'branch-uuid',
              incident_type_map      = {
                  'fall-detection': 'incident-type-uuid-for-fall',
-                 "theft-detection": "incident-uuid-theft"
+                 "theft-detection": "incident-uuid-theft",
+                 "burglary-detection": "incident-uuid-burglary"
              },
          ),
     ]
