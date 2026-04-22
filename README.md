@@ -51,6 +51,8 @@ MediaMTX (RTSP camera streams)
 | Fall Detection | 8001 | done   |
 | Fire Detection | 8002 | done   |
 | Violence Detection | 8003 | done   |
+| Burglary Detection | 8004 | done   |
+| Theft Detection | 8005 | done   |
 
 ---
 
