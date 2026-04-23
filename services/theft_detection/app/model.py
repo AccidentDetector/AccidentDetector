@@ -53,9 +53,8 @@ class TheftDetector:
         
         ms = round((time.time() - start) * 1000, 2)
         
-        # Возвращаем детекцию только если модель видит Robbery
         if class_name == 'Robbery':
-            alert = True  # пусть Gateway решает по confidence
+            alert = True
             logger.warning(f'🚨 Robbery detected! ({confidence:.3f})')
             return alert, confidence, class_name, ms
         else:
