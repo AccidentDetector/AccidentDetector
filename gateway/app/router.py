@@ -206,6 +206,87 @@ async def violence_predict(
     r        = await forward_to_service(url, file, contents)
     return JSONResponse(status_code=r.status_code, content=r.json())
 
+
+@router.get('/theft-detection/health', tags=['Theft Detection'])
+async def theft_health():
+    url = get_service_url('theft-detection')
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f'{url}/health')
+            return r.json()
+        except Exception:
+            raise HTTPException(status_code=502, detail='theft-detection service unreachable')
+
+
+@router.post('/theft-detection/predict/batch', tags=['Theft Detection'])
+async def theft_predict_batch(
+    files: list[UploadFile] = File(...),
+    x_api_key: str = Header(...),
+    camera_id: str = 'default',
+):
+    verify_api_key(x_api_key)
+    
+    url = get_service_url('theft-detection')
+
+    form_files = []
+    for i, file in enumerate(files):
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=415, detail=f'File {i} must be an image')
+        contents = await file.read()
+        form_files.append(("files", (file.filename, contents, file.content_type)))
+    
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        try:
+            r = await client.post(
+                f'{url}/predict/batch',
+                params={'camera_id': camera_id},
+                files=form_files,
+            )
+            return JSONResponse(status_code=r.status_code, content=r.json())
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail='service timed out')
+        except Exception as e:
+            logger.error(f'theft batch error: {e}')
+            raise HTTPException(status_code=502, detail='service unavailable')
+
+@router.get('/burglary-detection/health', tags=['Burglary Detection'])
+async def burglary_health():
+    url = get_service_url('burglary-detection')
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f'{url}/health')
+            return r.json()
+        except Exception:
+            raise HTTPException(status_code=502, detail='burglary-detection service unreachable')
+        
+@router.post('/burglary-detection/predict/batch', tags=['Burglary Detection'])
+async def burglary_predict_batch(
+    files: list[UploadFile] = File(...),
+    x_api_key: str = Header(...),
+    camera_id: str = 'default',
+):
+    verify_api_key(x_api_key)
+    url = get_service_url('burglary-detection')
+    form_files = []
+    for i, file in enumerate(files):
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=415, detail=f'File {i} must be an image')
+        contents = await file.read()
+        form_files.append(("files", (file.filename, contents, file.content_type)))
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        try:
+            r = await client.post(
+                f'{url}/predict/batch',
+                params={'camera_id': camera_id},
+                files=form_files,
+            )
+            return JSONResponse(status_code=r.status_code, content=r.json())
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail='service timed out')
+        except Exception as e:
+            logger.error(f'burglary batch error: {e}')
+            raise HTTPException(status_code=502, detail='service unavailable')
+        
 #Другие ML сервисы членов команды в том же паттерне
 
 # @router.get('/fire-detection/health', tags=['Fire Detection'])
