@@ -42,7 +42,7 @@ async def predict_batch(
     try:
         alert, confidence, class_name, ms = detector.predict_sequence(frames)
         detections = []
-        if class_name:   # если есть реальная детекция (Robbery)
+        if class_name:
             detections.append(Detection(class_name=class_name, confidence=round(confidence, 4)))
         return PredictResponse(
             alert=alert,
