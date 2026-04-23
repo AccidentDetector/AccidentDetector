@@ -99,12 +99,20 @@ async def process_theft_frame(camera: Camera, frame_bytes: bytes):
 async def handle_theft_batch(camera: Camera, frames: list[bytes]):
     result = await send_theft_batch(camera.id, frames)
     if result:
+        detections = result.get("detections", [])
+        if detections:
+            top = detections[0]
+            class_name = top.get("class_name", "unknown")
+            confidence = top.get("confidence", 0.0)
+        else:
+            class_name = "unknown"
+            confidence = 0.0
         adapted = {
             "alert": result.get("alert", False),
             "detections": [
                 {
-                    "class_name": result.get("class_name", "unknown"),
-                    "confidence": result.get("confidence", 0.0),
+                    "class_name": class_name,
+                    "confidence": confidence,
                 }
             ],
         }
@@ -144,12 +152,20 @@ async def process_burglary_frame(camera: Camera, frame_bytes: bytes):
 async def handle_burglary_batch(camera: Camera, frames: list[bytes]):
     result = await send_burglary_batch(camera.id, frames)
     if result:
+        detections = result.get("detections", [])
+        if detections:
+            top = detections[0]
+            class_name = top.get("class_name", "unknown")
+            confidence = top.get("confidence", 0.0)
+        else:
+            class_name = "unknown"
+            confidence = 0.0
         adapted = {
             "alert": result.get("alert", False),
             "detections": [
                 {
-                    "class_name": result.get("class_name", "unknown"),
-                    "confidence": result.get("confidence", 0.0),
+                    "class_name": class_name,
+                    "confidence": confidence,
                 }
             ],
         }

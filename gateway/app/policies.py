@@ -80,15 +80,15 @@ DEFAULT_NOTIFICATION_POLICY = {
     "burglary-detection": {
         "rules": [
             {
-                "class_name": "*",
-                "min_confidence": 0.65,
-                "max_confidence": 0.85,
+                "class_name": "burglary",
+                "min_confidence": 0.40,
+                "max_confidence": 0.60,
                 "action": "warning",
                 "cooldown_sec": 20,
             },
             {
-                "class_name": "*",
-                "min_confidence": 0.85,
+                "class_name": "burglary",
+                "min_confidence": 0.60,
                 "max_confidence": 1.01,
                 "action": "alert",
                 "cooldown_sec": 10,
