@@ -7,4 +7,4 @@ numpy==1.26.4
 pydantic-settings==2.4.0
 python-multipart==0.0.12
 python-json-logger==2.0.7
-pillow==10.2.02
+pillow==10.2.0
