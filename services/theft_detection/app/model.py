@@ -52,13 +52,14 @@ class TheftDetector:
             class_name = settings.class_names[class_id]
         
         ms = round((time.time() - start) * 1000, 2)
-        alert = (class_name == settings.alert_class and confidence >= settings.conf_threshold)
         
-        if alert:
-            logger.warning(f'🚨 ALERT! {class_name} ({confidence:.3f})')
+        # Возвращаем детекцию только если модель видит Robbery
+        if class_name == 'Robbery':
+            alert = True  # пусть Gateway решает по confidence
+            logger.warning(f'🚨 Robbery detected! ({confidence:.3f})')
+            return alert, confidence, class_name, ms
         else:
-            logger.info(f'Prediction: {class_name} ({confidence:.3f})')
-        
-        return alert, confidence, class_name, ms
+            logger.info(f'Prediction: Normal ({confidence:.3f})')
+            return False, 0.0, '', ms
 
 detector = TheftDetector()

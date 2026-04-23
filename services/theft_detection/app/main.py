@@ -11,7 +11,7 @@ logging.root.addHandler(handler)
 logging.root.setLevel(logging.INFO)
 
 app = FastAPI(
-    title='Your Model Service',
+    title='Theft Model Service',
     version='1.0.0',
     docs_url='/docs',
     redoc_url=None,
