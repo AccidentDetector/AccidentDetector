@@ -5,6 +5,7 @@ import httpx
 
 from .config import settings
 from .stream_processor import Camera, stream_manager
+from .policies import build_notification_policy
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,12 @@ async def fetch_cameras_from_backend() -> list[Camera]:
             cameras = []
             for c in data.get('cameras', []):
                 cameras.append(Camera(
-                    id                     = c['id'],
-                    rtsp_url               = c['rtsp_url'],
-                    organization_id        = c['organization_id'],
-                    organization_branch_id = c['organization_branch_id'],
-                    incident_type_map      = c.get('incident_type_map', {}),
+                id=c['id'],
+                rtsp_url=c['rtsp_url'],
+                organization_id=c['organization_id'],
+                organization_branch_id=c['organization_branch_id'],
+                incident_type_map=c.get('incident_type_map', {}),
+                notification_policy=build_notification_policy(c['id']),
                 ))
             logger.info(f'fetched {len(cameras)} cameras from backend')
             return cameras

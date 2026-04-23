@@ -13,6 +13,7 @@ import numpy as np
 
 from .config import settings, IMAGE_MODELS, VIDEO_MODELS, MODEL_FRAME_INTERVALS
 from .reporter import reporter
+from .rules import resolve_action
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +25,22 @@ class Camera:
     organization_id: str
     organization_branch_id: str
     incident_type_map: dict[str, str] = field(default_factory=dict)
+    notification_policy: dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass
 class AlertState:
     last_alert: dict[str, float] = field(default_factory=dict)
 
-    def can_alert(self, camera_id: str, model_name: str) -> bool:
-        key = f'{camera_id}:{model_name}'
+    def can_alert(self, camera_id: str, model_name: str, action: str, class_name: str, cooldown_sec: int | None = None) -> bool:
+        key = f"{camera_id}:{model_name}:{class_name}:{action}"
         last = self.last_alert.get(key, 0)
-        return (time.time() - last) >= settings.alert_cooldown_sec
+        effective_cooldown = cooldown_sec if cooldown_sec is not None else settings.alert_cooldown_sec
+        return (time.time() - last) >= effective_cooldown
 
-    def mark_alerted(self, camera_id: str, model_name: str):
-        self.last_alert[f'{camera_id}:{model_name}'] = time.time()
+    def mark_alerted(self, camera_id: str, model_name: str, action: str, class_name: str):
+        key = f"{camera_id}:{model_name}:{class_name}:{action}"
+        self.last_alert[key] = time.time()
 
 
 alert_state = AlertState()
@@ -159,37 +163,54 @@ async def handle_result(camera: Camera, model_name: str, result: dict):
         logger.info(
             f'detection | camera={camera.id} model={model_name} '
             f'class={d["class_name"]} conf={d["confidence"]:.2f} '
-            f'alert={result["alert"]}'
+            f'alert={result.get("alert", False)}'
         )
 
-    if not result.get('alert'):
+    action, confidence, class_name, cooldown_sec = resolve_action(camera, model_name, result)
+
+    if action == "ignore":
         return
 
-    if not alert_state.can_alert(camera.id, model_name):
-        logger.debug(f'alert suppressed (cooldown) | camera={camera.id} model={model_name}')
+    if not alert_state.can_alert(
+        camera_id=camera.id,
+        model_name=model_name,
+        action=action,
+        class_name=class_name,
+        cooldown_sec=cooldown_sec,
+    ):
+        logger.debug(
+            f'{action} suppressed (cooldown) | camera={camera.id} '
+            f'model={model_name} class={class_name}'
+        )
         return
 
-    detections = result.get('detections', [])
-    top = max(detections, key=lambda d: d['confidence'], default=None)
-    confidence = top['confidence'] if top else 0.0
-    class_name = top['class_name'] if top else 'unknown'
+    logger.info(
+        f'{action.upper()} | camera={camera.id} model={model_name} '
+        f'class={class_name} conf={confidence:.2f}'
+    )
 
-    logger.info(f'ALERT | camera={camera.id} model={model_name} class={class_name} conf={confidence:.2f}')
-    alert_state.mark_alerted(camera.id, model_name)
+    alert_state.mark_alerted(
+        camera_id=camera.id,
+        model_name=model_name,
+        action=action,
+        class_name=class_name,
+    )
 
     incident_type_id = camera.incident_type_map.get(model_name)
-    if incident_type_id:
-        await reporter.report_incident(
-            camera_id=camera.id,
-            organization_id=camera.organization_id,
-            organization_branch_id=camera.organization_branch_id,
-            incident_type_id=incident_type_id,
-            confidence=confidence,
-            model_name=model_name,
-            class_name=class_name,
-        )
-    else:
+    if not incident_type_id:
         logger.warning(f'no incident_type_id for model={model_name} camera={camera.id} — not reported')
+        return
+
+    await reporter.report_incident(
+        camera_id=camera.id,
+        organization_id=camera.organization_id,
+        organization_branch_id=camera.organization_branch_id,
+        incident_type_id=incident_type_id,
+        confidence=confidence,
+        model_name=model_name,
+        class_name=class_name,
+        signal_type=action,   # warning / alert
+    )
 
 def grab_latest_frame(cap: cv2.VideoCapture) -> tuple[bool, Optional[np.ndarray]]:
     ret = False
@@ -322,25 +343,29 @@ async def process_camera_video_stream(camera: Camera):
                     await asyncio.sleep(0.1)
                     continue
                 for model_name, spec in VIDEO_MODELS.items():
+                    if model_name not in camera.incident_type_map:
+                        continue
+
                     clip_frames = await collect_clip_frames(
-                        cap=cap,
-                        first_frame=frame,
-                        target_frames=spec.get('clip_frames', 16),
-                        duration_sec=spec.get('clip_duration_sec', 1.0),
+                    cap=cap,
+                    first_frame=frame,
+                    target_frames=spec.get('clip_frames', 16),
+                    duration_sec=spec.get('clip_duration_sec', 1.0),
                     )
                     clip_bytes = encode_clip_to_avi(clip_frames, fps=spec.get('clip_fps', 16))
                     if not clip_bytes:
                         continue
+
                     result = await send_payload(
-                        model_name=model_name,
-                        service_url=spec['url'],
-                        payload_bytes=clip_bytes,
-                        filename=spec['filename'],
-                        content_type=spec['content_type'],
-                        timeout=10.0,
-                    )
-                    if result:
-                        await handle_result(camera, model_name, result)
+                    model_name=model_name,
+                    service_url=spec['url'],
+                    payload_bytes=clip_bytes,
+                    filename=spec['filename'],
+                    content_type=spec['content_type'],
+                    timeout=10.0,
+                )
+                if result:
+                    await handle_result(camera, model_name, result)
                 await asyncio.sleep(0.05)
         except Exception as e:
             logger.error(f'video stream error | camera={camera.id} error={e}')

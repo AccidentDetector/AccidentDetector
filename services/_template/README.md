@@ -149,3 +149,65 @@ Use:
 
 ```
 ```
+
+## Policy Integration
+
+Model services should **not** hardcode `warning` vs `alert`.
+
+A service should return raw detection output in the standard format:
+
+```json
+{
+  "model": "your-model",
+  "version": "1.0.0",
+  "alert": false,
+  "detections": [
+    {
+      "class_name": "your-class",
+      "confidence": 0.83
+    }
+  ],
+  "count": 1,
+  "inference_ms": 12.5
+}
+```
+
+### What you must do when adding a new model
+
+1. Register the model in `gateway/app/config.py`
+2. Make sure the service returns:
+   - `detections[].class_name`
+   - `detections[].confidence`
+3. Add an incident type mapping for the model
+4. Add policy rules in `gateway/app/policies.py`
+
+### Example policy rule
+
+```python
+"your-model": {
+    "rules": [
+        {
+            "class_name": "your-class",
+            "min_confidence": 0.70,
+            "max_confidence": 0.90,
+            "action": "warning",
+            "cooldown_sec": 20,
+        },
+        {
+            "class_name": "your-class",
+            "min_confidence": 0.90,
+            "max_confidence": 1.01,
+            "action": "alert",
+            "cooldown_sec": 10,
+        },
+    ]
+}
+```
+
+### Notes
+
+- `class_name` must be stable and consistent
+- `confidence` must be numeric
+- `alert` may still be returned as a fallback
+- final `ignore / warning / alert` decision is made by the gateway policy
+- batch / video models may use custom transport, but should still be adapted to the same detection result format before reaching the gateway policy layer

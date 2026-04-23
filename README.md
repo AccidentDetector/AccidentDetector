@@ -146,16 +146,42 @@ Body:
 
 On startup the gateway:
 1. Fetches camera list from the Go backend (`GET /api/v1/cameras/stream-config`)
-2. Starts an RTSP reader task per camera
-3. Samples one frame per second per camera
-4. Sends each frame to all registered ML services in parallel
-5. When any model returns `alert: true` → reports incident to Go backend
-6. Deduplicates — one alert per camera per model every `ALERT_COOLDOWN_SEC` seconds
-7. Refreshes camera list every `CAMERA_REFRESH_SEC` seconds
+2. Builds a local notification policy for each camera inside the gateway
+3. Starts an RTSP reader task per camera
+4. Samples frames / clips and sends them to registered ML services
+5. Normalizes model responses into a common detection format
+6. Evaluates detections using gateway rules:
+   - `ignore`
+   - `warning`
+   - `alert`
+7. Reports only `warning` / `alert` events to the backend
+8. Deduplicates events using cooldown per:
+   - camera
+   - model
+   - class
+   - action
+9. Refreshes camera list every `CAMERA_REFRESH_SEC` seconds
 
 ---
 
 ## Configuration
+
+## Notification Policy
+
+The gateway does **not** hardcode business severity inside model services.
+
+Instead, each model returns raw detection output, for example:
+
+```json
+{
+  "alert": false,
+  "detections": [
+    {
+      "class_name": "smoke",
+      "confidence": 0.72
+    }
+  ]
+}
 
 ### Root `.env`
 

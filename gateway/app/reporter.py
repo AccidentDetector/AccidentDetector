@@ -25,14 +25,15 @@ class BackendReporter:
 
     async def report_incident(
         self,
-        camera_id             : str,
-        organization_id       : str,
+        camera_id: str,
+        organization_id: str,
         organization_branch_id: str,
-        incident_type_id      : str,
-        confidence            : float,
-        model_name            : str,
-        class_name            : str,
-        snapshot_url          : str = '',
+        incident_type_id: str,
+        confidence: float,
+        model_name: str,
+        class_name: str,
+        signal_type: str = "alert",
+        snapshot_url: str = "",
     ) -> bool:
         if not self.configured:
             logger.warning('backend not configured — incident not reported')
@@ -43,7 +44,7 @@ class BackendReporter:
             'organization_id'       : organization_id,
             'organization_branch_id': organization_branch_id,
             'incident_type'         : incident_type_id,
-            'type'                  : 'auto',
+            "type"                  : signal_type,
             'probability'           : round(confidence, 4),
             'detected_at'           : datetime.now(timezone.utc).isoformat(),
             'snapshot_url'          : snapshot_url,
