@@ -61,15 +61,15 @@ DEFAULT_NOTIFICATION_POLICY = {
     "theft-detection": {
         "rules": [
             {
-                "class_name": "*",
-                "min_confidence": 0.65,
-                "max_confidence": 0.85,
+                "class_name": "Theft",
+                "min_confidence": 0.4,
+                "max_confidence": 0.6,
                 "action": "warning",
                 "cooldown_sec": 20,
             },
             {
-                "class_name": "*",
-                "min_confidence": 0.85,
+                "class_name": "Theft",
+                "min_confidence": 0.6,
                 "max_confidence": 1.01,
                 "action": "alert",
                 "cooldown_sec": 10,
