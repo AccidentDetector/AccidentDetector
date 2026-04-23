@@ -104,6 +104,11 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
   
   theft-detection:
     build: ./services/theft_detection
@@ -115,6 +120,41 @@ services:
     env_file:
       - ./services/theft_detection/.env
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  person_model:
+    build: ./services/person_model
+    expose:
+      - "8006"
+    volumes:
+      - ./services/person_model/weights:/app/weights
+    env_file:
+      - ./services/person_model/.env
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 
   # modelname-detection:
   #   build: ./services/modelname_detection
