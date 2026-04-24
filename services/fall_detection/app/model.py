@@ -27,7 +27,6 @@ class FallDetector:
         ms     = round((time.time() - start) * 1000, 2)
 
         detections = []
-        alert      = False
 
         for box in (result.boxes or []):
             cls_id   = int(box.cls.item())
@@ -42,8 +41,7 @@ class FallDetector:
                 box        = BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2),
             ))
 
-            if cls_name == settings.alert_class and conf >= settings.alert_threshold:
-                alert = True
+        alert = len(detections) > 0
 
         return alert, detections, ms
 

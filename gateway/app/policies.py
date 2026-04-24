@@ -4,20 +4,27 @@ DEFAULT_NOTIFICATION_POLICY = {
     "fall-detection": {
         "rules": [
             {
-                "class_name": "fall",
-                "min_confidence": 0.60,
-                "max_confidence": 0.80,
+                "class_name": "Fine",
+                "min_confidence": 0.70,
+                "max_confidence": 1.01,
+                "action": "warning",
+                "cooldown_sec": 30,
+            },
+            {
+                "class_name": "Fall",
+                "min_confidence": 0.55,
+                "max_confidence": 0.75,
                 "action": "warning",
                 "cooldown_sec": 20,
             },
             {
-                "class_name": "fall",
-                "min_confidence": 0.80,
+                "class_name": "Fall",
+                "min_confidence": 0.75,
                 "max_confidence": 1.01,
                 "action": "alert",
                 "cooldown_sec": 8,
             },
-        ]
+            ]
     },
 
     "fire-detection": {

@@ -358,30 +358,31 @@ async def process_camera_video_stream(camera: Camera):
                 if mean < 5 or mean > 250:
                     await asyncio.sleep(0.1)
                     continue
+                # find this block and fix indentation
                 for model_name, spec in VIDEO_MODELS.items():
                     if model_name not in camera.incident_type_map:
                         continue
 
                     clip_frames = await collect_clip_frames(
-                    cap=cap,
-                    first_frame=frame,
-                    target_frames=spec.get('clip_frames', 16),
-                    duration_sec=spec.get('clip_duration_sec', 1.0),
+                        cap=cap,
+                        first_frame=frame,
+                        target_frames=spec.get('clip_frames', 16),
+                        duration_sec=spec.get('clip_duration_sec', 1.0),
                     )
                     clip_bytes = encode_clip_to_avi(clip_frames, fps=spec.get('clip_fps', 16))
                     if not clip_bytes:
                         continue
 
                     result = await send_payload(
-                    model_name=model_name,
-                    service_url=spec['url'],
-                    payload_bytes=clip_bytes,
-                    filename=spec['filename'],
-                    content_type=spec['content_type'],
-                    timeout=10.0,
-                )
-                if result:
-                    await handle_result(camera, model_name, result)
+                        model_name=model_name,
+                        service_url=spec['url'],
+                        payload_bytes=clip_bytes,
+                        filename=spec['filename'],
+                        content_type=spec['content_type'],
+                        timeout=10.0,
+                    )
+                    if result:    
+                        await handle_result(camera, model_name, result)
                 await asyncio.sleep(0.05)
         except Exception as e:
             logger.error(f'video stream error | camera={camera.id} error={e}')

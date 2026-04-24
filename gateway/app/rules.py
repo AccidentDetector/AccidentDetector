@@ -1,8 +1,4 @@
-from typing import Any
-
-ALLOWED_ACTIONS = {"ignore", "warning", "alert"}
-
-def resolve_action(camera, model_name: str, result: dict[str, Any]) -> tuple[str, float, str, float | None]:
+def resolve_action(camera, model_name: str, result: dict) -> tuple[str, float, str, float | None]:
     detections = result.get("detections", [])
     top = max(detections, key=lambda d: d.get("confidence", 0.0), default=None)
 
@@ -14,7 +10,8 @@ def resolve_action(camera, model_name: str, result: dict[str, Any]) -> tuple[str
 
     for rule in rules:
         rule_class = rule.get("class_name", "*")
-        if rule_class not in (class_name, "*"):
+
+        if rule_class != "*" and rule_class.lower() != class_name.lower():
             continue
 
         min_c = float(rule.get("min_confidence", 0.0))
@@ -24,13 +21,10 @@ def resolve_action(camera, model_name: str, result: dict[str, Any]) -> tuple[str
             action = str(rule.get("action", "ignore")).lower()
             if action not in ALLOWED_ACTIONS:
                 action = "ignore"
-
             raw_cooldown = rule.get("cooldown_sec")
             cooldown_sec = float(raw_cooldown) if raw_cooldown is not None else None
-
             return action, confidence, class_name, cooldown_sec
 
-    # fallback на старое поведение
     if result.get("alert"):
         return "alert", confidence, class_name, None
 

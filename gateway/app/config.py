@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     violence_detection_url: str = 'http://violence-detection:8003'
     BURGLARY_DETECTION_URL: str = 'http://burglary-detection:8004'
     THEFT_DETECTION_URL: str = "http://theft-detection:8005"
+    person_model_url: str = 'http://person-model:8006'
+
 
     backend_url: str = ''
     backend_api_key: str = ''
@@ -64,6 +66,13 @@ MODEL_REGISTRY: dict[str, dict] = {
     'filename': 'frame.jpg',
     'content_type': 'image/jpeg',
     },
+    # not used in current project scope
+    #'person-model': {
+    #    'url': settings.person_model_url,
+    #    'input_mode': 'image',
+    #    'filename': 'frame.jpg',
+    #    'content_type': 'image/jpeg',
+    #},
 }
 
 MODEL_REGISTRY = {
