@@ -133,27 +133,33 @@ services:
       timeout: 10s
       retries: 3
 
-  person_model:
-    build: ./services/person_model
-    expose:
-      - "8006"
-    volumes:
-      - ./services/person_model/weights:/app/weights
-    env_file:
-      - ./services/person_model/.env
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    ports:
+      - "8554:8554"
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
+  #person_model:
+  # build: ./services/person_model
+  #  expose:
+  #    - "8006"
+  #  volumes:
+  #    - ./services/person_model/weights:/app/weights
+  #  env_file:
+  #    - ./services/person_model/.env
+  # restart: unless-stopped
+  #  deploy:
+  #    resources:
+  #      reservations:
+  #        devices:
+  #          - driver: nvidia
+  #            count: 1
+  #            capabilities: [gpu]
+  #  healthcheck:
+  #    test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+  #    interval: 30s
+  #    timeout: 10s
+  #    retries: 3
 
 
   # modelname-detection:

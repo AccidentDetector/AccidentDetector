@@ -19,7 +19,6 @@ class Detection(BaseModel):
 class PredictResponse(BaseModel):
     model        : str = 'fire-detection'
     version      : str = '1.0.0'
-    alert        : bool
     detections   : List[Detection]
     count        : int
     inference_ms : float

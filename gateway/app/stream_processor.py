@@ -3,9 +3,9 @@ import logging
 import os
 import tempfile
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
-from collections import deque
 
 import cv2
 import httpx
@@ -20,38 +20,49 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Camera:
-    id: str
-    rtsp_url: str
-    organization_id: str
+    id                    : str
+    rtsp_url              : str
+    organization_id       : str
     organization_branch_id: str
-    incident_type_map: dict[str, str] = field(default_factory=dict)
-    notification_policy: dict[str, dict] = field(default_factory=dict)
+    incident_type_map     : dict[str, str] = field(default_factory=dict)
+    notification_policy   : dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass
 class AlertState:
-    last_alert: dict[str, float] = field(default_factory=dict)
+    """Tracks last alert time per camera/model/class/action to prevent spam."""
+    _state: dict[str, float] = field(default_factory=dict)
 
-    def can_alert(self, camera_id: str, model_name: str, action: str, class_name: str, cooldown_sec: int | None = None) -> bool:
-        key = f"{camera_id}:{model_name}:{class_name}:{action}"
-        last = self.last_alert.get(key, 0)
-        effective_cooldown = cooldown_sec if cooldown_sec is not None else settings.alert_cooldown_sec
-        return (time.time() - last) >= effective_cooldown
+    def can_alert(
+        self,
+        camera_id  : str,
+        model_name : str,
+        action     : str,
+        class_name : str,
+        cooldown_sec: float | None = None,
+    ) -> bool:
+        key      = f'{camera_id}:{model_name}:{class_name}:{action}'
+        last     = self._state.get(key, 0)
+        cooldown = cooldown_sec if cooldown_sec is not None else settings.alert_cooldown_sec
+        return (time.time() - last) >= cooldown
 
     def mark_alerted(self, camera_id: str, model_name: str, action: str, class_name: str):
-        key = f"{camera_id}:{model_name}:{class_name}:{action}"
-        self.last_alert[key] = time.time()
+        key = f'{camera_id}:{model_name}:{class_name}:{action}'
+        self._state[key] = time.time()
 
 
 alert_state = AlertState()
 
+
+# ── inference helpers ─────────────────────────────────────────────────────────
+
 async def send_payload(
-    model_name: str,
-    service_url: str,
+    model_name  : str,
+    service_url : str,
     payload_bytes: bytes,
-    filename: str,
+    filename    : str,
     content_type: str,
-    timeout: float = 10.0,
+    timeout     : float = 10.0,
 ) -> Optional[dict]:
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
@@ -65,25 +76,103 @@ async def send_payload(
             logger.error(f'inference error | model={model_name} error={e}')
             return None
 
-theft_frame_buffers = {}
+
+# ── result handler ────────────────────────────────────────────────────────────
+
+async def handle_result(camera: Camera, model_name: str, result: dict):
+    """
+    Central handler for all model results.
+    Applies policy rules to decide ignore/warning/alert.
+    Posts to backend if action is warning or alert.
+    """
+    if not result:
+        return
+
+    detections = result.get('detections', [])
+    if not detections:
+        return
+
+    # log every detection
+    for d in detections:
+        logger.info(
+            f'detection | camera={camera.id} model={model_name} '
+            f'class={d["class_name"]} conf={d["confidence"]:.3f}'
+        )
+
+    action, confidence, class_name, cooldown_sec = resolve_action(camera, model_name, result)
+
+    if action == 'ignore':
+        logger.debug(
+            f'ignored | camera={camera.id} model={model_name} '
+            f'class={class_name} conf={confidence:.3f}'
+        )
+        return
+
+    if not alert_state.can_alert(
+        camera_id   = camera.id,
+        model_name  = model_name,
+        action      = action,
+        class_name  = class_name,
+        cooldown_sec= cooldown_sec,
+    ):
+        logger.debug(
+            f'{action} suppressed by cooldown | camera={camera.id} '
+            f'model={model_name} class={class_name}'
+        )
+        return
+
+    logger.info(
+        f'{action.upper()} | camera={camera.id} model={model_name} '
+        f'class={class_name} conf={confidence:.3f}'
+    )
+    alert_state.mark_alerted(camera.id, model_name, action, class_name)
+
+    incident_type_id = camera.incident_type_map.get(model_name)
+    if not incident_type_id:
+        logger.warning(
+            f'no incident_type_id configured | camera={camera.id} '
+            f'model={model_name} — cannot report to backend'
+        )
+        return
+
+    await reporter.report_incident(
+        camera_id             = camera.id,
+        organization_id       = camera.organization_id,
+        organization_branch_id= camera.organization_branch_id,
+        incident_type_id      = incident_type_id,
+        confidence            = confidence,
+        model_name            = model_name,
+        class_name            = class_name,
+        signal_type           = action,
+    )
+
+
+# ── batch model helpers (theft, burglary) ─────────────────────────────────────
+
+theft_frame_buffers: dict[str, deque] = {}
 theft_buffer_lock = asyncio.Lock()
 
-async def send_theft_batch(camera_id: str, frames: list[bytes]) -> Optional[dict]:
+burglary_frame_buffers: dict[str, deque] = {}
+burglary_buffer_lock = asyncio.Lock()
+
+
+async def send_batch(service_url: str, camera_id: str, frames: list[bytes]) -> Optional[dict]:
     if not frames:
         return None
-    files = [("files", (f"frame_{i}.jpg", fb, "image/jpeg")) for i, fb in enumerate(frames)]
+    files = [('files', (f'frame_{i}.jpg', fb, 'image/jpeg')) for i, fb in enumerate(frames)]
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             r = await client.post(
-                f"{settings.THEFT_DETECTION_URL}/predict/batch",
-                params={"camera_id": camera_id},
+                f'{service_url}/predict/batch',
+                params={'camera_id': camera_id},
                 files=files,
             )
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            logger.error(f'theft batch request failed | camera={camera_id} error={e}')
+            logger.error(f'batch request failed | camera={camera_id} url={service_url} error={e}')
             return None
+
 
 async def process_theft_frame(camera: Camera, frame_bytes: bytes):
     async with theft_buffer_lock:
@@ -95,48 +184,30 @@ async def process_theft_frame(camera: Camera, frame_bytes: bytes):
             frames = list(buf)
             buf.clear()
             asyncio.create_task(handle_theft_batch(camera, frames))
-            
+
+
 async def handle_theft_batch(camera: Camera, frames: list[bytes]):
-    result = await send_theft_batch(camera.id, frames)
-    if result:
-        detections = result.get("detections", [])
-        if detections:
-            top = detections[0]
-            class_name = top.get("class_name", "unknown")
-            confidence = top.get("confidence", 0.0)
-        else:
-            class_name = "unknown"
-            confidence = 0.0
-        adapted = {
-            "alert": result.get("alert", False),
-            "detections": [
-                {
-                    "class_name": class_name,
-                    "confidence": confidence,
-                }
-            ],
-        }
-        await handle_result(camera, "theft-detection", adapted)
+    url    = settings.THEFT_DETECTION_URL
+    result = await send_batch(url, camera.id, frames)
+    if not result:
+        return
 
-burglary_frame_buffers = {}
-burglary_buffer_lock = asyncio.Lock()
+    detections = result.get('detections', [])
+    if not detections:
+        return
 
-async def send_burglary_batch(camera_id: str, frames: list[bytes]) -> Optional[dict]:
-    if not frames:
-        return None
-    files = [("files", (f"frame_{i}.jpg", fb, "image/jpeg")) for i, fb in enumerate(frames)]
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            r = await client.post(
-                f"{settings.BURGLARY_DETECTION_URL}/predict/batch",
-                params={"camera_id": camera_id},
-                files=files,
-            )
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:
-            logger.error(f'burglary batch request failed | camera={camera_id} error={e}')
-            return None
+    top        = detections[0]
+    class_name = top.get('class_name', '')
+    confidence = top.get('confidence', 0.0)
+
+    if not class_name or confidence <= 0.0:
+        return
+
+    adapted = {
+        'detections': [{'class_name': class_name, 'confidence': confidence}],
+    }
+    await handle_result(camera, 'theft-detection', adapted)
+
 
 async def process_burglary_frame(camera: Camera, frame_bytes: bytes):
     async with burglary_buffer_lock:
@@ -149,88 +220,74 @@ async def process_burglary_frame(camera: Camera, frame_bytes: bytes):
             buf.clear()
             asyncio.create_task(handle_burglary_batch(camera, frames))
 
-async def handle_burglary_batch(camera: Camera, frames: list[bytes]):
-    result = await send_burglary_batch(camera.id, frames)
-    if result:
-        detections = result.get("detections", [])
-        if detections:
-            top = detections[0]
-            class_name = top.get("class_name", "unknown")
-            confidence = top.get("confidence", 0.0)
-        else:
-            class_name = "unknown"
-            confidence = 0.0
-        adapted = {
-            "alert": result.get("alert", False),
-            "detections": [
-                {
-                    "class_name": class_name,
-                    "confidence": confidence,
-                }
-            ],
-        }
-        await handle_result(camera, "burglary-detection", adapted)
 
-async def handle_result(camera: Camera, model_name: str, result: dict):
+async def handle_burglary_batch(camera: Camera, frames: list[bytes]):
+    url    = settings.BURGLARY_DETECTION_URL
+    result = await send_batch(url, camera.id, frames)
     if not result:
         return
 
-    for d in result.get('detections', []):
-        logger.info(
-            f'detection | camera={camera.id} model={model_name} '
-            f'class={d["class_name"]} conf={d["confidence"]:.2f} '
-            f'alert={result.get("alert", False)}'
+    detections = result.get('detections', [])
+    if not detections:
+        return
+
+    top        = detections[0]
+    class_name = top.get('class_name', '')
+    confidence = top.get('confidence', 0.0)
+
+    if not class_name or confidence <= 0.0:
+        return
+
+    adapted = {
+        'detections': [{'class_name': class_name, 'confidence': confidence}],
+    }
+    await handle_result(camera, 'burglary-detection', adapted)
+
+
+# ── image frame handler ───────────────────────────────────────────────────────
+
+async def process_image_frame(camera: Camera, frame_bytes: bytes):
+    # batch models
+    if 'theft-detection' in camera.incident_type_map:
+        await process_theft_frame(camera, frame_bytes)
+    if 'burglary-detection' in camera.incident_type_map:
+        await process_burglary_frame(camera, frame_bytes)
+
+    # regular image models
+    other_models = {
+        name: spec
+        for name, spec in IMAGE_MODELS.items()
+        if name not in {'theft-detection', 'burglary-detection'}
+        and name in camera.incident_type_map
+    }
+
+    if not other_models:
+        return
+
+    tasks = {
+        model_name: send_payload(
+            model_name   = model_name,
+            service_url  = spec['url'],
+            payload_bytes= frame_bytes,
+            filename     = spec['filename'],
+            content_type = spec['content_type'],
+            timeout      = 5.0,
         )
+        for model_name, spec in other_models.items()
+    }
 
-    action, confidence, class_name, cooldown_sec = resolve_action(camera, model_name, result)
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    for model_name, result in zip(tasks.keys(), results):
+        if isinstance(result, Exception) or result is None:
+            continue
+        await handle_result(camera, model_name, result)
 
-    if action == "ignore":
-        return
 
-    if not alert_state.can_alert(
-        camera_id=camera.id,
-        model_name=model_name,
-        action=action,
-        class_name=class_name,
-        cooldown_sec=cooldown_sec,
-    ):
-        logger.debug(
-            f'{action} suppressed (cooldown) | camera={camera.id} '
-            f'model={model_name} class={class_name}'
-        )
-        return
-
-    logger.info(
-        f'{action.upper()} | camera={camera.id} model={model_name} '
-        f'class={class_name} conf={confidence:.2f}'
-    )
-
-    alert_state.mark_alerted(
-        camera_id=camera.id,
-        model_name=model_name,
-        action=action,
-        class_name=class_name,
-    )
-
-    incident_type_id = camera.incident_type_map.get(model_name)
-    if not incident_type_id:
-        logger.warning(f'no incident_type_id for model={model_name} camera={camera.id} — not reported')
-        return
-
-    await reporter.report_incident(
-        camera_id=camera.id,
-        organization_id=camera.organization_id,
-        organization_branch_id=camera.organization_branch_id,
-        incident_type_id=incident_type_id,
-        confidence=confidence,
-        model_name=model_name,
-        class_name=class_name,
-        signal_type=action,   # warning / alert
-    )
+# ── video clip helpers ────────────────────────────────────────────────────────
 
 def grab_latest_frame(cap: cv2.VideoCapture) -> tuple[bool, Optional[np.ndarray]]:
+    """Flush buffer and return only the most recent frame."""
     ret = False
-    frame = None
     for _ in range(30):
         ret = cap.grab()
         if not ret:
@@ -240,39 +297,13 @@ def grab_latest_frame(cap: cv2.VideoCapture) -> tuple[bool, Optional[np.ndarray]
     ret, frame = cap.retrieve()
     return ret, frame
 
-async def process_image_frame(camera: Camera, frame_bytes: bytes):
-    # Handle batch models (theft, burglary)
-    if "theft-detection" in camera.incident_type_map:
-        await process_theft_frame(camera, frame_bytes)
-    if "burglary-detection" in camera.incident_type_map:
-        await process_burglary_frame(camera, frame_bytes)
 
-    # All other image models (non‑batch)
-    other_models = {
-        name: spec for name, spec in IMAGE_MODELS.items()
-        if name not in {"theft-detection", "burglary-detection"} and name in camera.incident_type_map
-    }
+def read_next_frame(cap: cv2.VideoCapture) -> tuple[bool, Optional[np.ndarray]]:
+    ret, frame = cap.read()
+    if not ret or frame is None:
+        return False, None
+    return True, frame
 
-    tasks = {
-        model_name: send_payload(
-            model_name=model_name,
-            service_url=spec['url'],
-            payload_bytes=frame_bytes,
-            filename=spec['filename'],
-            content_type=spec['content_type'],
-            timeout=5.0,
-        )
-        for model_name, spec in other_models.items()
-    }
-
-    if not tasks:
-        return
-
-    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-    for model_name, result in zip(tasks.keys(), results):
-        if isinstance(result, Exception) or result is None:
-            continue
-        await handle_result(camera, model_name, result)
 
 async def collect_clip_frames(
     cap: cv2.VideoCapture,
@@ -286,9 +317,11 @@ async def collect_clip_frames(
 
     while len(frames) < target_frames and (time.time() - started) < duration_sec:
         await asyncio.sleep(sleep_step)
-        ret, frame = grab_latest_frame(cap)
+
+        ret, frame = read_next_frame(cap)
         if not ret or frame is None or frame.size == 0:
             continue
+
         frames.append(frame.copy())
 
     while len(frames) < target_frames:
@@ -296,10 +329,11 @@ async def collect_clip_frames(
 
     return frames[:target_frames]
 
+
 def encode_clip_to_avi(frames: list[np.ndarray], fps: int) -> Optional[bytes]:
     if not frames:
         return None
-    h, w = frames[0].shape[:2]
+    h, w      = frames[0].shape[:2]
     temp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.avi') as tmp:
@@ -325,89 +359,32 @@ def encode_clip_to_avi(frames: list[np.ndarray], fps: int) -> Optional[bytes]:
             except Exception:
                 pass
 
-async def process_camera_video_stream(camera: Camera):
-    if not VIDEO_MODELS:
-        return
-    logger.info(f'video stream processor started | camera={camera.id} url={camera.rtsp_url}')
-    while True:
-        cap = cv2.VideoCapture(camera.rtsp_url, cv2.CAP_FFMPEG)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000)
-        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000)
-        if not cap.isOpened():
-            logger.error(f'cannot open video stream | camera={camera.id} — retrying in 5s')
-            cap.release()
-            await asyncio.sleep(5)
-            continue
-        logger.info(f'video stream connected | camera={camera.id}')
-        consecutive_failures = 0
-        try:
-            while True:
-                ret, frame = grab_latest_frame(cap)
-                if not ret or frame is None:
-                    consecutive_failures += 1
-                    if consecutive_failures >= 3:
-                        logger.warning(f'video stream lost | camera={camera.id} — reconnecting')
-                        break
-                    await asyncio.sleep(0.5)
-                    continue
-                consecutive_failures = 0
-                if frame.size == 0:
-                    continue
-                mean = frame.mean()
-                if mean < 5 or mean > 250:
-                    await asyncio.sleep(0.1)
-                    continue
-                # find this block and fix indentation
-                for model_name, spec in VIDEO_MODELS.items():
-                    if model_name not in camera.incident_type_map:
-                        continue
 
-                    clip_frames = await collect_clip_frames(
-                        cap=cap,
-                        first_frame=frame,
-                        target_frames=spec.get('clip_frames', 16),
-                        duration_sec=spec.get('clip_duration_sec', 1.0),
-                    )
-                    clip_bytes = encode_clip_to_avi(clip_frames, fps=spec.get('clip_fps', 16))
-                    if not clip_bytes:
-                        continue
-
-                    result = await send_payload(
-                        model_name=model_name,
-                        service_url=spec['url'],
-                        payload_bytes=clip_bytes,
-                        filename=spec['filename'],
-                        content_type=spec['content_type'],
-                        timeout=10.0,
-                    )
-                    if result:    
-                        await handle_result(camera, model_name, result)
-                await asyncio.sleep(0.05)
-        except Exception as e:
-            logger.error(f'video stream error | camera={camera.id} error={e}')
-        finally:
-            cap.release()
-            logger.info(f'video stream disconnected | camera={camera.id}')
-        await asyncio.sleep(2)
+# ── stream processors ─────────────────────────────────────────────────────────
 
 async def process_camera_stream(camera: Camera):
+    """Image stream — sends frames to all image-based models."""
     logger.info(f'image stream processor started | camera={camera.id} url={camera.rtsp_url}')
+
     while True:
         cap = cv2.VideoCapture(camera.rtsp_url, cv2.CAP_FFMPEG)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000)
         cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000)
+
         if not cap.isOpened():
             logger.error(f'cannot open image stream | camera={camera.id} — retrying in 5s')
             cap.release()
             await asyncio.sleep(5)
             continue
+
         logger.info(f'image stream connected | camera={camera.id}')
         consecutive_failures = 0
+
         try:
             while True:
                 ret, frame = grab_latest_frame(cap)
+
                 if not ret or frame is None:
                     consecutive_failures += 1
                     if consecutive_failures >= 3:
@@ -415,30 +392,116 @@ async def process_camera_stream(camera: Camera):
                         break
                     await asyncio.sleep(0.5)
                     continue
+
                 consecutive_failures = 0
+
                 if frame.size == 0:
                     continue
                 mean = frame.mean()
                 if mean < 5 or mean > 250:
                     await asyncio.sleep(0.1)
                     continue
+
                 ok, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                if ok:
-                    frame_bytes = buffer.tobytes()
-                    if IMAGE_MODELS:
-                        asyncio.create_task(process_image_frame(camera, frame_bytes))
-                # Dynamic frame interval based on active models
-                custom_interval = settings.frame_interval_sec
-                for model in camera.incident_type_map.keys():
+                if ok and IMAGE_MODELS:
+                    asyncio.create_task(process_image_frame(camera, buffer.tobytes()))
+
+                # per-camera dynamic interval — use fastest interval among active models
+                interval = settings.frame_interval_sec
+                for model in camera.incident_type_map:
                     if model in MODEL_FRAME_INTERVALS:
-                        custom_interval = min(custom_interval, MODEL_FRAME_INTERVALS[model])
-                await asyncio.sleep(custom_interval)
+                        interval = min(interval, MODEL_FRAME_INTERVALS[model])
+                await asyncio.sleep(interval)
+
         except Exception as e:
             logger.error(f'image stream error | camera={camera.id} error={e}')
         finally:
             cap.release()
             logger.info(f'image stream disconnected | camera={camera.id}')
+
         await asyncio.sleep(2)
+
+
+async def process_camera_video_stream(camera: Camera):
+    """Video stream — collects clips and sends to video-based models."""
+    if not VIDEO_MODELS:
+        return
+
+    logger.info(f'video stream processor started | camera={camera.id} url={camera.rtsp_url}')
+
+    while True:
+        cap = cv2.VideoCapture(camera.rtsp_url, cv2.CAP_FFMPEG)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000)
+
+        if not cap.isOpened():
+            logger.error(f'cannot open video stream | camera={camera.id} — retrying in 5s')
+            cap.release()
+            await asyncio.sleep(5)
+            continue
+
+        logger.info(f'video stream connected | camera={camera.id}')
+        consecutive_failures = 0
+
+        try:
+            while True:
+                ret, frame = grab_latest_frame(cap)
+
+                if not ret or frame is None:
+                    consecutive_failures += 1
+                    if consecutive_failures >= 3:
+                        logger.warning(f'video stream lost | camera={camera.id} — reconnecting')
+                        break
+                    await asyncio.sleep(0.5)
+                    continue
+
+                consecutive_failures = 0
+
+                if frame.size == 0:
+                    continue
+                mean = frame.mean()
+                if mean < 5 or mean > 250:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                for model_name, spec in VIDEO_MODELS.items():
+                    if model_name not in camera.incident_type_map:
+                        continue
+
+                    clip_frames = await collect_clip_frames(
+                        cap          = cap,
+                        first_frame  = frame,
+                        target_frames= spec.get('clip_frames', 16),
+                        duration_sec = spec.get('clip_duration_sec', 1.0),
+                    )
+                    clip_bytes = encode_clip_to_avi(clip_frames, fps=spec.get('clip_fps', 16))
+                    if not clip_bytes:
+                        continue
+
+                    result = await send_payload(
+                        model_name   = model_name,
+                        service_url  = spec['url'],
+                        payload_bytes= clip_bytes,
+                        filename     = spec['filename'],
+                        content_type = spec['content_type'],
+                        timeout      = 10.0,
+                    )
+                    if result:
+                        await handle_result(camera, model_name, result)
+
+                await asyncio.sleep(0.05)
+
+        except Exception as e:
+            logger.error(f'video stream error | camera={camera.id} error={e}')
+        finally:
+            cap.release()
+            logger.info(f'video stream disconnected | camera={camera.id}')
+
+        await asyncio.sleep(2)
+
+
+# ── stream manager ────────────────────────────────────────────────────────────
 
 class StreamManager:
     def __init__(self):
@@ -447,12 +510,14 @@ class StreamManager:
     def start_camera(self, camera: Camera):
         image_key = f'image:{camera.id}'
         video_key = f'video:{camera.id}'
+
         if image_key not in self._tasks:
             self._tasks[image_key] = asyncio.create_task(
                 process_camera_stream(camera),
                 name=f'stream:image:{camera.id}',
             )
             logger.info(f'started image stream task | camera={camera.id}')
+
         if video_key not in self._tasks and VIDEO_MODELS:
             self._tasks[video_key] = asyncio.create_task(
                 process_camera_video_stream(camera),
@@ -471,12 +536,14 @@ class StreamManager:
         return list(self._tasks.keys())
 
     def update_cameras(self, cameras: list[Camera]):
-        new_ids = {c.id for c in cameras}
-        current_camera_ids = {key.split(':', 1)[1] for key in self._tasks.keys()}
-        for cam_id in current_camera_ids - new_ids:
+        new_ids         = {c.id for c in cameras}
+        current_cam_ids = {key.split(':', 1)[1] for key in self._tasks}
+
+        for cam_id in current_cam_ids - new_ids:
             self.stop_camera(cam_id)
+
         for cam in cameras:
-            if cam.id not in current_camera_ids:
+            if cam.id not in current_cam_ids:
                 self.start_camera(cam)
 
 

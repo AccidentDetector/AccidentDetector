@@ -19,21 +19,19 @@ class FallDetector:
         logger.info(f'loading model from {path}')
         self.model  = YOLO(str(path))
         self.loaded = True
-        logger.info('model loaded successfully')
+        logger.info('model loaded')
 
-    def predict(self, image: np.ndarray) -> tuple[bool, list[Detection], float]:
+    def predict(self, image: np.ndarray) -> tuple[list[Detection], float]:
         start  = time.time()
         result = self.model.predict(image, conf=settings.conf_threshold, verbose=False)[0]
         ms     = round((time.time() - start) * 1000, 2)
 
         detections = []
-
         for box in (result.boxes or []):
             cls_id   = int(box.cls.item())
             cls_name = settings.class_names[cls_id]
             conf     = round(float(box.conf.item()), 4)
             x1, y1, x2, y2 = [round(float(v), 2) for v in box.xyxy[0].tolist()]
-
             detections.append(Detection(
                 class_name = cls_name,
                 class_id   = cls_id,
@@ -41,9 +39,11 @@ class FallDetector:
                 box        = BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2),
             ))
 
-        alert = len(detections) > 0
-
-        return alert, detections, ms
+        logger.info(
+            f'inference done | detections={len(detections)} '
+            f'classes={[d.class_name for d in detections]} ms={ms}'
+        )
+        return detections, ms
 
 
 detector = FallDetector()

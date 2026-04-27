@@ -14,7 +14,7 @@ from app.schemas import Detection
 logger = logging.getLogger(__name__)
 
 KINETICS_MEAN = np.array([0.43216, 0.394666, 0.37645], dtype=np.float32)
-KINETICS_STD = np.array([0.22803, 0.22145, 0.216989], dtype=np.float32)
+KINETICS_STD  = np.array([0.22803, 0.22145,  0.216989], dtype=np.float32)
 
 
 def sample_indices(num_frames: int, clip_len: int):
@@ -39,93 +39,50 @@ def build_model(num_classes: int = 2):
 
 class ViolenceDetector:
     def __init__(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         path = Path(settings.model_path)
         if not path.exists():
-            raise FileNotFoundError(f"weights not found: {path}")
-
-        logger.info(f"loading violence model from {path} on {self.device}")
-        self.model = self._load_model(path)
+            raise FileNotFoundError(f'weights not found: {path}')
+        logger.info(f'loading violence model from {path} on {self.device}')
+        self.model  = self._load_model(path)
         self.loaded = True
-        logger.info("violence model loaded successfully")
+        logger.info('violence model loaded')
 
     def _load_model(self, path: Path):
-        ckpt = torch.load(path, map_location=self.device, weights_only=False)
-
+        ckpt  = torch.load(path, map_location=self.device, weights_only=False)
         model = build_model(num_classes=2)
-        model.load_state_dict(ckpt["model_state_dict"])
+        model.load_state_dict(ckpt['model_state_dict'])
         model.to(self.device)
         model.eval()
-
-        if "best_threshold" in ckpt:
-            settings.alert_threshold = float(ckpt["best_threshold"])
-
-        if "class_names" in ckpt and isinstance(ckpt["class_names"], list):
-            settings.class_names = ckpt["class_names"]
-
-        if "config" in ckpt and isinstance(ckpt["config"], dict):
-            cfg = ckpt["config"]
-            if "clip_len" in cfg:
-                settings.clip_num_frames = int(cfg["clip_len"])
-            if "image_size" in cfg:
-                settings.image_size = int(cfg["image_size"])
-
-        logger.info(
-            f"loaded checkpoint: threshold={settings.alert_threshold}, "
-            f"clip_num_frames={settings.clip_num_frames}, image_size={settings.image_size}, "
-            f"class_names={settings.class_names}"
-        )
-
         return model
 
     def _read_clip(self, video_path: str) -> torch.Tensor:
         cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise RuntimeError(f"Cannot open video: {video_path}")
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        indices = sample_indices(total, settings.clip_num_frames)
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        chosen    = []
+        last_good = None
 
-        if total_frames <= 0:
-            all_frames = []
-            while True:
-                ok, frame = cap.read()
-                if not ok:
-                    break
-                all_frames.append(frame)
-
-            cap.release()
-
-            total_frames = len(all_frames)
-            if total_frames <= 0:
-                raise RuntimeError(f"Empty video: {video_path}")
-
-            idxs = sample_indices(total_frames, settings.clip_num_frames)
-            chosen = [all_frames[i] for i in idxs]
-        else:
-            idxs = sample_indices(total_frames, settings.clip_num_frames)
-            chosen = []
-            last_good = None
-
-            for frame_idx in idxs:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
-                ok, frame = cap.read()
-
-                if not ok:
-                    if last_good is None:
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        ok0, frame0 = cap.read()
-                        if not ok0:
-                            cap.release()
-                            raise RuntimeError(f"Failed reading first frame: {video_path}")
-                        frame = frame0
-                    else:
-                        frame = last_good.copy()
-
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
+            ok, frame = cap.read()
+            if ok and frame is not None:
                 last_good = frame
                 chosen.append(frame)
+            else:
+                if last_good is not None:
+                    chosen.append(last_good.copy())
+                else:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ok0, frame0 = cap.read()
+                    if not ok0:
+                        cap.release()
+                        raise RuntimeError(f'failed reading first frame: {video_path}')
+                    last_good = frame0
+                    chosen.append(frame)
 
-            cap.release()
+        cap.release()
 
         frames = []
         for frame in chosen:
@@ -140,38 +97,33 @@ class ViolenceDetector:
         frames = np.stack(frames, axis=0).astype(np.float32) / 255.0
         frames = (frames - KINETICS_MEAN[None, None, None, :]) / KINETICS_STD[None, None, None, :]
         frames = np.transpose(frames, (3, 0, 1, 2))  # C,T,H,W
-
         tensor = torch.from_numpy(frames).unsqueeze(0)  # 1,C,T,H,W
-        tensor = tensor.to(self.device, dtype=torch.float32)
-        return tensor
+        return tensor.to(self.device, dtype=torch.float32)
 
-    def predict(self, video_path: str):
+    def predict(self, video_path: str) -> tuple[list[Detection], float]:
         start = time.time()
-
         x = self._read_clip(video_path)
 
         with torch.no_grad():
             logits = self.model(x)
-            probs = torch.softmax(logits, dim=1)[0]
+            probs  = torch.softmax(logits, dim=1)[0]
             conf, cls_id = torch.max(probs, dim=0)
 
-        cls_id = int(cls_id.item())
-        conf = float(conf.item())
+        cls_id   = int(cls_id.item())
+        conf     = round(float(conf.item()), 4)
         cls_name = settings.class_names[cls_id]
+        ms       = round((time.time() - start) * 1000, 2)
 
-        ms = round((time.time() - start) * 1000, 2)
+        detections = [Detection(
+            class_name = cls_name,
+            class_id   = cls_id,
+            confidence = conf,
+        )]
 
-        detections = [
-            Detection(
-                class_name=cls_name,
-                class_id=cls_id,
-                confidence=round(conf, 4),
-            )
-        ]
-
-        alert = cls_name == settings.alert_class and conf >= settings.alert_threshold
-
-        return alert, detections, ms
+        logger.info(
+            f'inference done | class={cls_name} conf={conf:.3f} ms={ms}'
+        )
+        return detections, ms
 
 
 detector = ViolenceDetector()

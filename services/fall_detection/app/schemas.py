@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 
 class BoundingBox(BaseModel):
@@ -19,7 +19,6 @@ class Detection(BaseModel):
 class PredictResponse(BaseModel):
     model        : str = 'fall-detection'
     version      : str = '1.0.0'
-    alert        : bool
     detections   : List[Detection]
     count        : int
     inference_ms : float

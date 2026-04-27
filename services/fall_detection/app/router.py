@@ -31,13 +31,11 @@ def health():
 async def predict(file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=415, detail='file must be an image')
-
     try:
-        contents        = await file.read()
-        img             = decode_image(contents)
-        alert, dets, ms = detector.predict(img)
-        logger.info(f'predict | alert={alert} detections={len(dets)} file={file.filename}')
-        return PredictResponse(alert=alert, detections=dets, count=len(dets), inference_ms=ms)
+        contents      = await file.read()
+        img           = decode_image(contents)
+        dets, ms      = detector.predict(img)
+        return PredictResponse(detections=dets, count=len(dets), inference_ms=ms)
     except HTTPException:
         raise
     except Exception as e:
@@ -49,24 +47,15 @@ async def predict(file: UploadFile = File(...)):
 async def predict_annotated(file: UploadFile = File(...)):
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=415, detail='file must be an image')
-
     try:
         contents  = await file.read()
         img       = decode_image(contents)
         result    = detector.model.predict(img, conf=settings.conf_threshold, verbose=False)[0]
         annotated = result.plot()
-
-        alert = any(
-            settings.class_names[int(b.cls.item())] == settings.alert_class
-            and b.conf.item() >= settings.alert_threshold
-            for b in (result.boxes or [])
-        )
-
         _, buffer = cv2.imencode('.jpg', annotated)
         return StreamingResponse(
             io.BytesIO(buffer.tobytes()),
             media_type='image/jpeg',
-            headers={'X-Alert': str(alert).lower()},
         )
     except HTTPException:
         raise

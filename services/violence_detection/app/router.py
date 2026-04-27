@@ -22,12 +22,8 @@ async def predict(file: UploadFile = File(...)):
         raise HTTPException(status_code=415, detail='file must be a video')
 
     temp_path = None
-
     try:
-        suffix = os.path.splitext(file.filename or '')[1].lower()
-        if not suffix:
-            suffix = '.mp4'
-
+        suffix   = os.path.splitext(file.filename or '')[1].lower() or '.mp4'
         contents = await file.read()
         if not contents:
             raise HTTPException(status_code=400, detail='empty file')
@@ -36,18 +32,8 @@ async def predict(file: UploadFile = File(...)):
             tmp.write(contents)
             temp_path = tmp.name
 
-        alert, dets, ms = detector.predict(temp_path)
-
-        logger.info(
-            f'predict | alert={alert} detections={len(dets)} file={file.filename}'
-        )
-
-        return PredictResponse(
-            alert=alert,
-            detections=dets,
-            count=len(dets),
-            inference_ms=ms,
-        )
+        dets, ms = detector.predict(temp_path)
+        return PredictResponse(detections=dets, count=len(dets), inference_ms=ms)
 
     except HTTPException:
         raise
@@ -59,12 +45,9 @@ async def predict(file: UploadFile = File(...)):
             try:
                 os.remove(temp_path)
             except Exception as e:
-                logger.warning(f'failed to remove temp file {temp_path}: {e}')
+                logger.warning(f'failed to remove temp file: {e}')
 
 
 @router.post('/predict/annotated')
-async def predict_annotated(file: UploadFile = File(...)):
-    raise HTTPException(
-        status_code=501,
-        detail='annotated video inference is not implemented'
-    )
+async def predict_annotated():
+    raise HTTPException(status_code=501, detail='annotated video inference not implemented')

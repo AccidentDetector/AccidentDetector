@@ -9,9 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class BackendReporter:
-    #when alert=true.
-
-
     def __init__(self):
         self.backend_url = settings.backend_url
         self.headers     = {
@@ -25,18 +22,21 @@ class BackendReporter:
 
     async def report_incident(
         self,
-        camera_id: str,
-        organization_id: str,
+        camera_id             : str,
+        organization_id       : str,
         organization_branch_id: str,
-        incident_type_id: str,
-        confidence: float,
-        model_name: str,
-        class_name: str,
-        signal_type: str = "alert",
-        snapshot_url: str = "",
+        incident_type_id      : str,
+        confidence            : float,
+        model_name            : str,
+        class_name            : str,
+        signal_type           : str = 'alert',  # 'warning' or 'alert'
+        snapshot_url          : str = '',
     ) -> bool:
         if not self.configured:
-            logger.warning('backend not configured — incident not reported')
+            logger.warning(
+                f'backend not configured — skipping incident report | '
+                f'camera={camera_id} model={model_name} signal={signal_type}'
+            )
             return False
 
         payload = {
@@ -44,12 +44,18 @@ class BackendReporter:
             'organization_id'       : organization_id,
             'organization_branch_id': organization_branch_id,
             'incident_type'         : incident_type_id,
-            "type"                  : signal_type,
+            'type'                  : signal_type,
             'probability'           : round(confidence, 4),
             'detected_at'           : datetime.now(timezone.utc).isoformat(),
             'snapshot_url'          : snapshot_url,
-            'description'           : f'{class_name} detected by {model_name} model',
+            'description'           : f'{class_name} detected by {model_name}',
         }
+
+        logger.info(
+            f'reporting incident | camera={camera_id} model={model_name} '
+            f'class={class_name} conf={confidence:.3f} signal={signal_type} '
+            f'incident_type={incident_type_id}'
+        )
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -58,14 +64,24 @@ class BackendReporter:
                     json=payload,
                     headers=self.headers,
                 )
-                if r.status_code == 201:
-                    logger.info(f'incident reported | camera={camera_id} model={model_name} conf={confidence:.2f}')
-                    return True
-                else:
-                    logger.error(f'backend rejected incident | status={r.status_code} body={r.text}')
+                if r.status_code not in (200, 201):
+                    logger.error(
+                        f'backend rejected incident | status={r.status_code} '
+                        f'body={r.text} camera={camera_id} model={model_name}'
+                    )
                     return False
+
+                logger.info(
+                    f'incident reported successfully | camera={camera_id} '
+                    f'model={model_name} signal={signal_type}'
+                )
+                return True
+
             except Exception as e:
-                logger.error(f'failed to report incident: {e}')
+                logger.error(
+                    f'failed to reach backend | camera={camera_id} '
+                    f'model={model_name} error={e}'
+                )
                 return False
 
 

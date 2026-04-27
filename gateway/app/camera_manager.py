@@ -71,19 +71,23 @@ def get_manual_cameras() -> list[Camera]:
 
     Remove this once backend integration is complete.
     """
-    #return [
-    #    Camera(
-    #         id                     = 'test-camera-1',
-    #         rtsp_url               = 'rtsp://mediamtx:8554/test-camera',
-    #         organization_id        = 'org-uuid',
-    #         organization_branch_id = 'branch-uuid',
-    #         incident_type_map      = {
-    #             'fall-detection': 'incident-type-uuid-for-fall',
-    #             "theft-detection": "incident-uuid-theft",
-    #             "burglary-detection": "incident-uuid-burglary"
-    #         },
-    #
-    return []
+    return [
+        Camera(
+            id='test-camera-1',
+            rtsp_url='rtsp://mediamtx:8554/test-camera',
+            organization_id='org-uuid',
+            organization_branch_id='branch-uuid',
+            incident_type_map={
+                'fall-detection': 'incident-type-uuid-for-fall',
+                'theft-detection': 'incident-uuid-theft',
+                'burglary-detection': 'incident-uuid-burglary',
+                'fire-detection': 'incident-uuid-fire',
+                'violence-detection': 'incident-uuid-violence'
+            },
+            notification_policy=build_notification_policy('test-camera-1'),
+)
+    ]
+    #return []
 
 
 async def camera_refresh_loop():
@@ -94,8 +98,8 @@ async def camera_refresh_loop():
     while True:
         cameras = await fetch_cameras_from_backend()
 
-        #if not cameras:
-        #    cameras = get_manual_cameras()
+        if not cameras:
+            cameras = get_manual_cameras()
 
         if cameras:
             stream_manager.update_cameras(cameras)
