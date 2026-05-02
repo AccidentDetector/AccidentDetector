@@ -344,6 +344,20 @@ async def fall_predict_annotated(
         except Exception as e:
             logger.error(f'annotated error: {e}')
             raise HTTPException(status_code=502, detail='service unavailable')
+
+@router.post("/suspicious-action-detection/predict")
+async def suspicious_action_predict(
+    file     : UploadFile = File(...),
+    x_api_key: str = Header(...),
+):
+    verify_api_key(x_api_key)
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=415, detail='file must be an image')
+
+    url      = get_service_url('fall-detection')
+    contents = await file.read()
+    r        = await forward_to_service(url, file, contents)
+    return JSONResponse(status_code=r.status_code, content=r.json())
         
 #Другие ML сервисы членов команды в том же паттерне
 

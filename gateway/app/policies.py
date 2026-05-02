@@ -128,6 +128,31 @@ DEFAULT_NOTIFICATION_POLICY = {
             },
         ]
     },
+    "suspicious-action-detection": {
+        "rules": [
+            {
+                "class_name": "Normal",
+                "min_confidence": 0.0,
+                "max_confidence": 1.01,
+                "action": "ignore",
+                "cooldown_sec": 0,
+            },
+            {
+                "class_name": "Suspicious",
+                "min_confidence": 0.60,
+                "max_confidence": 0.80,
+                "action": "warning",
+                "cooldown_sec": 20,
+            },
+            {
+                "class_name": "Suspicious",
+                "min_confidence": 0.80,
+                "max_confidence": 1.01,
+                "action": "alert",
+                "cooldown_sec": 8,
+            },
+        ]
+    }
 }
 
 # per-camera overrides — override specific model rules for specific cameras

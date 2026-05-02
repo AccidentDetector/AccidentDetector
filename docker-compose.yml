@@ -161,6 +161,15 @@ services:
   #    timeout: 10s
   #    retries: 3
 
+  # suspicious-action-detection:
+  #  build:
+  #    context: ./services/suspicious_action_detection
+  #  container_name: suspicious-action-detection
+  #  ports:
+  #    - "8007:8007"
+  #  env_file:
+  #    - ./services/suspicious_action_detection/.env
+  #  restart: unless-stopped
 
   # modelname-detection:
   #   build: ./services/modelname_detection
